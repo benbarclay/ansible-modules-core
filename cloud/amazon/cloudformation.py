@@ -78,6 +78,11 @@ options:
       - Location of file containing the template body. The URL must point to a template (max size 307,200 bytes) located in an S3 bucket in the same region as the stack. This parameter is mutually exclusive with 'template'. Either one of them is required if "state" parameter is "present"
     required: false
     version_added: "2.0"
+  template_contents:
+    description:
+      - Contents of a template. This is intended to be used with a lookup plugin to ensure role portability.
+    required: false
+    version_added: "2.0"
   template_format:
     description:
     - For local templates, allows specification of json or yaml format
@@ -135,6 +140,21 @@ EXAMPLES = '''
     stack_name="ansible-cloudformation" state=present
     region=us-east-1 disable_rollback=true
     template_url=https://s3.amazonaws.com/my-bucket/cloudformation.template
+  args:
+    template_parameters:
+      KeyName: jmartin
+      DiskType: ephemeral
+      InstanceType: m1.small
+      ClusterSize: 3
+    tags:
+      Stack: ansible-cloudformation
+
+# Use a template with a lookup
+- name: launch ansible cloudformation example
+  cloudformation:
+    stack_name="ansible-cloudformation" state=present
+    region=us-east-1 disable_rollback=true
+    template_contents="{{ lookup('file', 'cloudformation.json') }}"
   args:
     template_parameters:
       KeyName: jmartin
@@ -246,6 +266,7 @@ def main():
             stack_policy=dict(default=None, required=False),
             disable_rollback=dict(default=False, type='bool'),
             template_url=dict(default=None, required=False),
+            template_contents=dict(default=None, required=False),
             template_format=dict(default='json', choices=['json', 'yaml'], required=False),
             tags=dict(default=None, type='dict')
         )
@@ -253,7 +274,7 @@ def main():
 
     module = AnsibleModule(
         argument_spec=argument_spec,
-        mutually_exclusive=[['template_url', 'template']],
+        mutually_exclusive=[['template_url', 'template', 'template_contents']],
     )
     if not HAS_BOTO:
         module.fail_json(msg='boto required for this module')
@@ -261,12 +282,14 @@ def main():
     state = module.params['state']
     stack_name = module.params['stack_name']
 
-    if module.params['template'] is None and module.params['template_url'] is None:
+    if module.params['template'] is None and module.params['template_url'] is None and module.params['template_contents'] is None:
         if state == 'present':
-            module.fail_json('Module parameter "template" or "template_url" is required if "state" is "present"')
+            module.fail_json('Module parameter "template", "template_url" or "template_contents" is required if "state" is "present"')
 
     if module.params['template'] is not None:
         template_body = open(module.params['template'], 'r').read()
+    elif module.params['template_contents'] is not None:
+        template_body = module.params['template_contents'] 
     else:
         template_body = None
 
